@@ -30,6 +30,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <gio/gio.h>
 #include "cmd_parser.h"
 #include "compression_wrapper.h"
 #include "createrepo_shared.h"
@@ -545,6 +546,46 @@ load_old_metadata(cr_Metadata **md,
 
     g_message("Loaded information about %d packages",
               g_hash_table_size(cr_metadata_hashtable(*md)));
+}
+
+gboolean
+copy_recursive(GFile *src, GFile *dest, GFileCopyFlags flags, GCancellable *cancellable, GError **error) {
+    GFileType src_type = g_file_query_file_type(src, G_FILE_QUERY_INFO_NONE, cancellable);
+    if (src_type == G_FILE_TYPE_DIRECTORY) {
+        g_file_make_directory(dest, cancellable, error);
+        g_file_copy_attributes(src, dest, flags, cancellable, error);
+
+        GFileEnumerator *enumerator = g_file_enumerate_children(src, G_FILE_ATTRIBUTE_STANDARD_NAME, G_FILE_QUERY_INFO_NONE, cancellable, error);
+        for (GFileInfo *info = g_file_enumerator_next_file(enumerator, cancellable, error); info != NULL; info = g_file_enumerator_next_file(enumerator, cancellable, error)) {
+            const char *relative_path = g_file_info_get_name(info);
+            copy_recursive(
+                g_file_resolve_relative_path(src, relative_path),
+                g_file_resolve_relative_path(dest, relative_path),
+                flags, cancellable, error);
+        }
+    } else if (src_type == G_FILE_TYPE_REGULAR) {
+        g_file_copy(src, dest, flags, cancellable, NULL, NULL, error);
+    }
+
+    return TRUE;
+}
+
+gboolean
+delete_recursive(GFile *file, GCancellable *cancellable, GError **error) {
+    GFileType file_type = g_file_query_file_type(file, G_FILE_QUERY_INFO_NONE, cancellable);
+    if (file_type == G_FILE_TYPE_DIRECTORY) {
+        GFileEnumerator *enumerator = g_file_enumerate_children(file, G_FILE_ATTRIBUTE_STANDARD_NAME, G_FILE_QUERY_INFO_NONE, cancellable, error);
+        for (GFileInfo *info = g_file_enumerator_next_file(enumerator, cancellable, error); info != NULL; info = g_file_enumerator_next_file(enumerator, cancellable, error)) {
+            delete_recursive(
+                g_file_resolve_relative_path(file, g_file_info_get_name(info)),
+                cancellable, error);
+        }
+        g_file_delete(file, cancellable, error);
+    } else if (file_type == G_FILE_TYPE_REGULAR) {
+        g_file_delete(file, cancellable, error);
+    }
+
+    return TRUE;
 }
 
 int
@@ -2022,8 +2063,14 @@ deltaerror:
     g_free(tmp_dirname);
 
     if (g_rename(out_repo, old_repodata_path) == -1) {
-        g_debug("Old repodata doesn't exists: Cannot rename %s -> %s: %s",
-                out_repo, old_repodata_path, g_strerror(errno));
+        if (errno == 18) {
+            // Invalid cross-device link
+            copy_recursive(g_file_new_for_path(out_repo), g_file_new_for_path(old_repodata_path), G_FILE_COPY_OVERWRITE, NULL, NULL);
+            delete_recursive(g_file_new_for_path(out_repo), NULL, NULL);
+        } else {
+            g_debug("Old repodata doesn't exists: Cannot rename %s -> %s: %s",
+                    out_repo, old_repodata_path, g_strerror(errno));
+        }
     } else {
         g_debug("Renamed %s -> %s", out_repo, old_repodata_path);
         old_repodata_renamed = TRUE;

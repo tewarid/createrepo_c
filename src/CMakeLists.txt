@@ -89,7 +89,9 @@ ADD_EXECUTABLE(createrepo_c createrepo_c.c cmd_parser.c)
 TARGET_LINK_LIBRARIES(createrepo_c
                         libcreaterepo_c
                         ${GLIB2_LIBRARIES}
-                        ${GTHREAD2_LIBRARIES})
+                        ${GTHREAD2_LIBRARIES}
+                        ${GIO2_LIBRARIES})
+
 
 ADD_EXECUTABLE(mergerepo_c mergerepo_c.c)
 TARGET_LINK_LIBRARIES(mergerepo_c
