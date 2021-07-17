@@ -40,6 +40,7 @@ find_package(OpenSSL REQUIRED)
 find_package(ZLIB REQUIRED)
 
 pkg_check_modules(GLIB2 REQUIRED glib-2.0)
+pkg_check_modules(GIO2 REQUIRED gio-2.0)
 pkg_check_modules(GTHREAD2 REQUIRED gthread-2.0)
 pkg_check_modules(LZMA REQUIRED liblzma)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
